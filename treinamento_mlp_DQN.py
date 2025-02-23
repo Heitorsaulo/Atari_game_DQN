@@ -9,7 +9,18 @@ from stable_baselines3.dqn import CnnPolicy
 from stable_baselines3.dqn import MlpPolicy
 from stable_baselines3.common.callbacks import BaseCallback
 from Ram.dict_ram_values import faixas
+import torch
 
+
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    print("Using Apple Silicon GPU (MPS)")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using NVIDIA GPU (CUDA)")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
 
 def verify_car_lane(pos_chicken):
     index = 0
@@ -54,13 +65,13 @@ class FreewayRewardWrapper(gym.Wrapper):
         lane_pos = verify_car_lane(player_pos_y)
         # Recompensa adicional por se mover para cima
         if player_pos_y > self.last_player_pos:
-            reward += 0.075
-        if (check_collision(cars_x, lane_pos) or check_collision_with_action(action, score, self.last_score)) and player_pos_y < self.last_player_pos:
-            reward -= 0.80
+            reward += 0.25
+        if (check_collision(cars_x, lane_pos) or check_collision_with_action(action, score, self.last_score)):
+            reward -= 0.95
         if player_pos_y == self.last_player_pos:
             reward -= 0.035
         if score > self.last_score:
-            reward = (score - self.last_score) * 2.57  # Amplificar impacto da pontuação
+            reward = (score - self.last_score) * 10  # Amplificar impacto da pontuação
 
         # Atualizar estados anteriores
         self.last_score = score
@@ -76,6 +87,16 @@ class FreewayRewardWrapper(gym.Wrapper):
 
         return obs, reward, done, truncated, info
 
+def make_env():
+    env = gym.make(
+        "ALE/Freeway-v5",
+        render_mode="rgb_array",
+        obs_type="ram",
+        frameskip=1,
+        full_action_space=False
+    )
+    env = FreewayRewardWrapper(env)
+    return env
 
 class RewardCallback(BaseCallback):
     """
@@ -119,47 +140,51 @@ class RewardCallback(BaseCallback):
         plt.title("Tempo médio de treinamento dos episódios")
         plt.show()
 
-
-env = gym.make("ALE/Freeway-v5", render_mode="rgb_array")
-env = FreewayRewardWrapper(env)
-env = make_vec_env(lambda: env, n_envs=1)
+# Criar ambiente vetorizado
+NUM_ENVS = 4
+env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
 reward_callback = RewardCallback()
 
 model = DQN(MlpPolicy,
             env,
             learning_rate=1e-3,
             buffer_size=50000,
-            learning_starts=1000,
+            learning_starts=50000,
             batch_size=64,
-            gamma=0.84,
+            gamma=0.78,
             target_update_interval=1000,
             train_freq=4,
             exploration_fraction=0.12,
             exploration_final_eps=0.04,
             verbose=1,
-            device="auto")
+            device=device)
 
-model.learn(total_timesteps=500000, callback=reward_callback)
-model.save("D:/PycharmProjects/AtariDQN/modelos/freeway_mlp_0.075_500000_g0.84.zip")
+model.learn(total_timesteps=500000, callback=reward_callback, progress_bar=True,)
+model.save("freeway_mlp.zip")
 
 reward_callback.plot_rewards()
 reward_callback.plot_times()
 
-# Testar o wrapper
-env = gym.make("ALE/Freeway-v5", render_mode="human")
-env = FreewayRewardWrapper(env)  # Aplica o wrapper de recompensa
-env = make_vec_env(lambda: env, n_envs=1)
-model = DQN.load("D:/PycharmProjects/AtariDQN/modelos/freeway_mlp_0.075_500000_g0.84.zip", env=env)
-obs = env.reset()
-total_reward = []
-acc_reward = 0
-for _ in range(500):
-    action, _ = model.predict(obs, deterministic=True)
-    obs, reward, done, truncated = env.step(action)
+# Atualizar seção de teste
+def test_model(model_path, num_episodes=5):
+    env = DummyVecEnv([make_env for _ in range(1)])  # Single env for testing
+    model = DQN.load(model_path, env=env)
+    
+    for episode in range(num_episodes):
+        obs = env.reset()
+        done = False
+        total_reward = 0
+        
+        while not done:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, done, info = env.step(action)
+            total_reward += reward[0]  # Get reward from first env
+            env.render()
+            
+        print(f"Episode {episode + 1}: Total Reward = {total_reward}")
+    
+    env.close()
 
-    # Extrair valores corretos do ambiente vetorizado
-    print(f"Ação: {action}, Recompensa: {reward}")
-    acc_reward += reward
-    total_reward.append(acc_reward)
-    env.render()
-env.close()
+if __name__ == "__main__":
+    # Testar o wrapper
+    test_model("freeway_mlp.zip")
