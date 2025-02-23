@@ -5,7 +5,8 @@ A galinha atravessa a rua para chegar ao outro lado, mas porque não ganhar pont
 Caso seja atingido por um veículo, sua galinha não irá morrer, mas jogada para traz, tendo que fazer o caminho de volta.
 
 
-Este código foi testado em uma máquina com Apple Silicon (M1).
+Este código foi testado em uma máquina com Apple Silicon (M1). Porém, também é possível executar em outras GPUs.
+
 """
 
 import gymnasium as gym
