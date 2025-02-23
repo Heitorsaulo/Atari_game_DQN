@@ -149,7 +149,7 @@ reward_callback.plot_times()
 env = gym.make("ALE/Freeway-v5", render_mode="human")
 env = FreewayRewardWrapper(env)  # Aplica o wrapper de recompensa
 env = make_vec_env(lambda: env, n_envs=1)
-model = DQN.load("D:/PycharmProjects/AtariDQN/modelos/freeway_mlp_0.075_500000_g0.84.zip"", env=env)
+model = DQN.load("D:/PycharmProjects/AtariDQN/modelos/freeway_mlp_0.075_500000_g0.84.zip", env=env)
 obs = env.reset()
 total_reward = []
 acc_reward = 0
