@@ -99,46 +99,69 @@ def make_env():
     return env
 
 class RewardCallback(BaseCallback):
-    """
-    Callback personalizado para armazenar a recompensa média por episódio.
-    """
-
-    def __init__(self, check_freq=1000):
-        super().__init__()
-        self.check_freq = check_freq
+    def __init__(self, verbose=1):
+        super().__init__(verbose)
         self.episode_rewards = []
         self.mean_rewards = []
         self.episode_times = []
         self.mean_times = []
-
+        self.current_rewards = None
+        self.current_lengths = None
+        
+    def _on_training_start(self):
+        """Initialize buffers for rewards and lengths for each environment"""
+        self.current_rewards = [0.0 for _ in range(self.training_env.num_envs)]
+        self.current_lengths = [0 for _ in range(self.training_env.num_envs)]
+        
     def _on_step(self) -> bool:
-        """Chamado a cada passo do treinamento."""
-        if "episode" in self.locals["infos"][0]:
-            ep_reward = self.locals["infos"][0]["episode"]["r"]  # Recompensa do episódio
-            print(ep_reward)
-            self.episode_rewards.append(ep_reward)
-            self.mean_rewards.append(np.mean(self.episode_rewards))
-            ep_time = self.locals["infos"][0]["episode"]["t"]  # tempo do episodio
-            self.episode_times.append(ep_time)
-            self.mean_times.append(np.mean(self.episode_times))
-            print(ep_time)
+        # Update current rewards and lengths
+        for i in range(self.training_env.num_envs):
+            self.current_rewards[i] += self.locals["rewards"][i]
+            self.current_lengths[i] += 1
+            
+            # Check if episode ended for this environment
+            if self.locals["dones"][i]:
+                # Store the episode data
+                self.episode_rewards.append(self.current_rewards[i])
+                self.mean_rewards.append(np.mean(self.episode_rewards))
+                self.episode_times.append(self.current_lengths[i])
+                self.mean_times.append(np.mean(self.episode_times))
+                
+                # Print info
+                print(f"Episode reward: {self.current_rewards[i]:.2f}")
+                print(f"Episode length: {self.current_lengths[i]}")
+                
+                # Reset buffers for this environment
+                self.current_rewards[i] = 0.0
+                self.current_lengths[i] = 0
+                
         return True
 
     def plot_rewards(self):
-        """Gera o gráfico da evolução da recompensa média."""
-        plt.plot(self.mean_rewards)
-        plt.xlabel("Episódios")
-        plt.ylabel("Média Acumulada das Recompensas")
-        plt.title("Evolução da Recompensa Média Durante o Treinamento")
-        plt.show()
+        if len(self.mean_rewards) > 0:  # Only plot if we have data
+            plt.figure(figsize=(10, 5))
+            plt.plot(self.episode_rewards, alpha=0.3, label='Rewards')
+            plt.plot(self.mean_rewards, label='Mean Rewards')
+            plt.xlabel("Episodes")
+            plt.ylabel("Reward")
+            plt.title("Training Rewards")
+            plt.legend()
+            plt.show()
+        else:
+            print("No reward data to plot")
 
     def plot_times(self):
-        """Gera o gráfico da evolução da recompensa média."""
-        plt.plot(self.mean_times)
-        plt.xlabel("Episódios")
-        plt.ylabel("Média Acumulada do tempo(s)")
-        plt.title("Tempo médio de treinamento dos episódios")
-        plt.show()
+        if len(self.mean_times) > 0:  # Only plot if we have data
+            plt.figure(figsize=(10, 5))
+            plt.plot(self.episode_times, alpha=0.3, label='Episode Lengths')
+            plt.plot(self.mean_times, label='Mean Lengths')
+            plt.xlabel("Episodes")
+            plt.ylabel("Episode Length")
+            plt.title("Training Episode Lengths")
+            plt.legend()
+            plt.show()
+        else:
+            print("No time data to plot")
 
 # Criar ambiente vetorizado
 NUM_ENVS = 4
@@ -162,8 +185,15 @@ model = DQN(MlpPolicy,
 model.learn(total_timesteps=500000, callback=reward_callback, progress_bar=True,)
 model.save("freeway_mlp.zip")
 
-reward_callback.plot_rewards()
-reward_callback.plot_times()
+# Add error handling for plotting
+try:
+    print(f"Total episodes recorded: {len(reward_callback.episode_rewards)}")
+    reward_callback.plot_rewards()
+    reward_callback.plot_times()
+except Exception as e:
+    print(f"Error plotting results: {e}")
+    print(f"Rewards recorded: {len(reward_callback.episode_rewards)}")
+    print(f"Times recorded: {len(reward_callback.episode_times)}")
 
 # Atualizar seção de teste
 def test_model(model_path, num_episodes=5):
