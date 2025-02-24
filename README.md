@@ -52,7 +52,7 @@ O treinamento do agente no jogo Freeway utilizando a política CNN com recompens
 1. Clone o repositório e instale as dependências necessárias:
 
     ```sh
-    pip install gymnasium[atari] stable-baselines3 ale-py autorom
+    pip install gymnasium[atari] stable-baselines3 ale-py
     pip install numpy matplotlib torch
     ```
 
