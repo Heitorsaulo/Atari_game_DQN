@@ -22,6 +22,8 @@ else:
     device = torch.device("cpu")
     print("Using CPU")
 
+
+
 def verify_car_lane(pos_chicken):
     index = 0
     for pos_car in faixas.values():
@@ -66,9 +68,8 @@ class FreewayRewardWrapper(gym.Wrapper):
         # Recompensa adicional por se mover para cima
         if player_pos_y > self.last_player_pos:
             reward += 0.25
-        if (check_collision(cars_x, lane_pos) or check_collision_with_action(action, score,
-                                                                             self.last_score)) and player_pos_y < self.last_player_pos:
-            reward -= 0.95
+        if (check_collision(cars_x, lane_pos) or check_collision_with_action(action, score, self.last_score)) and player_pos_y < self.last_player_pos:
+            reward -= 0.80
         if player_pos_y == self.last_player_pos:
             reward -= 0.035
         if score > self.last_score:
@@ -90,75 +91,52 @@ class FreewayRewardWrapper(gym.Wrapper):
 
 
 class RewardCallback(BaseCallback):
-    def __init__(self, verbose=1):
-        super().__init__(verbose)
+    """
+    Callback personalizado para armazenar a recompensa média por episódio.
+    """
+
+    def __init__(self, check_freq=1000):
+        super().__init__()
+        self.check_freq = check_freq
         self.episode_rewards = []
         self.mean_rewards = []
         self.episode_times = []
         self.mean_times = []
-        self.current_rewards = None
-        self.current_lengths = None
-
-    def _on_training_start(self):
-        """Initialize buffers for rewards and lengths for each environment"""
-        self.current_rewards = [0.0 for _ in range(self.training_env.num_envs)]
-        self.current_lengths = [0 for _ in range(self.training_env.num_envs)]
 
     def _on_step(self) -> bool:
-        # Update current rewards and lengths
-        for i in range(self.training_env.num_envs):
-            self.current_rewards[i] += self.locals["rewards"][i]
-            self.current_lengths[i] += 1
-
-            # Check if episode ended for this environment
-            if self.locals["dones"][i]:
-                # Store the episode data
-                self.episode_rewards.append(self.current_rewards[i])
-                self.mean_rewards.append(np.mean(self.episode_rewards))
-                self.episode_times.append(self.current_lengths[i])
-                self.mean_times.append(np.mean(self.episode_times))
-
-                # Print info
-                print(f"Episode reward: {self.current_rewards[i]:.2f}")
-                print(f"Episode length: {self.current_lengths[i]}")
-
-                # Reset buffers for this environment
-                self.current_rewards[i] = 0.0
-                self.current_lengths[i] = 0
-
+        """Chamado a cada passo do treinamento."""
+        if "episode" in self.locals["infos"][0]:
+            ep_reward = self.locals["infos"][0]["episode"]["r"]  # Recompensa do episódio
+            print(ep_reward)
+            self.episode_rewards.append(ep_reward)
+            self.mean_rewards.append(np.mean(self.episode_rewards))
+            ep_time = self.locals["infos"][0]["episode"]["t"]  # tempo do episodio
+            self.episode_times.append(ep_time)
+            self.mean_times.append(np.mean(self.episode_times))
+            print(ep_time)
         return True
 
     def plot_rewards(self):
-        if len(self.mean_rewards) > 0:  # Only plot if we have data
-            plt.figure(figsize=(10, 5))
-            plt.plot(self.episode_rewards, alpha=0.3, label='Rewards')
-            plt.plot(self.mean_rewards, label='Mean Rewards')
-            plt.xlabel("Episodes")
-            plt.ylabel("Reward")
-            plt.title("Training Rewards")
-            plt.legend()
-            plt.show()
-        else:
-            print("No reward data to plot")
+        """Gera o gráfico da evolução da recompensa média."""
+        plt.plot(self.mean_rewards)
+        plt.xlabel("Episódios")
+        plt.ylabel("Média Acumulada das Recompensas")
+        plt.title("Evolução da Recompensa Média Durante o Treinamento")
+        plt.show()
 
     def plot_times(self):
-        if len(self.mean_times) > 0:  # Only plot if we have data
-            plt.figure(figsize=(10, 5))
-            plt.plot(self.episode_times, alpha=0.3, label='Episode Lengths')
-            plt.plot(self.mean_times, label='Mean Lengths')
-            plt.xlabel("Episodes")
-            plt.ylabel("Episode Length")
-            plt.title("Training Episode Lengths")
-            plt.legend()
-            plt.show()
-        else:
-            print("No time data to plot")
+        """Gera o gráfico da evolução da recompensa média."""
+        plt.plot(self.mean_times)
+        plt.xlabel("Episódios")
+        plt.ylabel("Média Acumulada do tempo(s)")
+        plt.title("Tempo médio de treinamento dos episódios")
+        plt.show()
 
 def make_env():
     env = gym.make(
         "ALE/Freeway-v5",
         render_mode="rgb_array",
-        obs_type="rgb",
+        obs_type="ram",
         frameskip=1,
         full_action_space=False
     )
@@ -167,37 +145,36 @@ def make_env():
 
 NUM_ENVS = 4
 env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
-env = VecFrameStack(env, n_stack=3, channels_order='last')  # Stacking adicional
 reward_callback = RewardCallback()
 
-model = DQN(CnnPolicy,
+model = DQN(MlpPolicy,
             env,
             learning_rate=1e-3,
             buffer_size=50000,
-            learning_starts=50000,
+            learning_starts=1000,
             batch_size=64,
-            gamma=0.78,
+            gamma=0.77,
             target_update_interval=1000,
             train_freq=4,
-            exploration_fraction=0.12,
-            exploration_final_eps=0.04,
+            exploration_fraction=0.11,
+            exploration_final_eps=0.06,
             verbose=1,
             device=device)
 
-model.learn(total_timesteps=600000, callback=reward_callback)
-model.save("D:/PycharmProjects/Atari_game_DQN/modelos/freeway_cnn_0.25_600000_g0.78.zip")
+model.learn(total_timesteps=500000, callback=reward_callback)
+model.save("D:/PycharmProjects/Atari_game_DQN/modelos/freeway_mlp_0.25_500000_g0.77.zip")
 
 reward_callback.plot_rewards()
 reward_callback.plot_times()
 
+
 # Atualizar seção de teste
 def test_model(model_path, num_episodes=5):
     env = DummyVecEnv([make_env for _ in range(1)])  # Single env for testing
-    env = VecFrameStack(env, n_stack=3, channels_order='last')  # Stacking adicional
     model = DQN.load(model_path, env=env)
 
     for episode in range(num_episodes):
-        obs, _ = env.reset()
+        obs = env.reset()
         done = False
         total_reward = 0
 
@@ -214,4 +191,4 @@ def test_model(model_path, num_episodes=5):
 
 if __name__ == "__main__":
     # Testar o wrapper
-    test_model("D:/PycharmProjects/Atari_game_DQN/modelos/freeway_cnn_0.25_600000_g0.78.zip")
+    test_model("freeway_mlp.zip")
