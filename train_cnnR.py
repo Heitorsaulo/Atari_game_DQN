@@ -185,7 +185,7 @@ model = DQN(CnnPolicy,
             device=device)
 
 model.learn(total_timesteps=600000, callback=reward_callback)
-model.save("D:/PycharmProjects/Atari_game_DQN/modelos/freeway_cnn_0.25_600000_g0.78.zip")
+model.save("freeway_dqn_cnn_personalizada_model.zip")
 
 reward_callback.plot_rewards()
 reward_callback.plot_times()
@@ -214,4 +214,4 @@ def test_model(model_path, num_episodes=5):
 
 if __name__ == "__main__":
     # Testar o wrapper
-    test_model("D:/PycharmProjects/Atari_game_DQN/modelos/freeway_cnn_0.25_600000_g0.78.zip")
+    test_model("freeway_dqn_cnn_personalizada_model.zip")
