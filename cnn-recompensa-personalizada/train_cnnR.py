@@ -2,13 +2,14 @@ import gymnasium as gym
 import ale_py
 import matplotlib.pyplot as plt
 import numpy as np
+
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines3.dqn import DQN
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.dqn import CnnPolicy
 from stable_baselines3.dqn import MlpPolicy
 from stable_baselines3.common.callbacks import BaseCallback
-from Ram.dict_ram_values import faixas
+from dict_ram_values import faixas
 import torch
 
 
@@ -66,7 +67,8 @@ class FreewayRewardWrapper(gym.Wrapper):
         # Recompensa adicional por se mover para cima
         if player_pos_y > self.last_player_pos:
             reward += 0.25
-        if (check_collision(cars_x, lane_pos) or check_collision_with_action(action, score, self.last_score)):
+        if (check_collision(cars_x, lane_pos) or check_collision_with_action(action, score,
+                                                                             self.last_score)) and player_pos_y < self.last_player_pos:
             reward -= 0.95
         if player_pos_y == self.last_player_pos:
             reward -= 0.035
@@ -87,16 +89,6 @@ class FreewayRewardWrapper(gym.Wrapper):
 
         return obs, reward, done, truncated, info
 
-def make_env():
-    env = gym.make(
-        "ALE/Freeway-v5",
-        render_mode="rgb_array",
-        obs_type="ram",
-        frameskip=1,
-        full_action_space=False
-    )
-    env = FreewayRewardWrapper(env)
-    return env
 
 class RewardCallback(BaseCallback):
     def __init__(self, verbose=1):
@@ -107,18 +99,18 @@ class RewardCallback(BaseCallback):
         self.mean_times = []
         self.current_rewards = None
         self.current_lengths = None
-        
+
     def _on_training_start(self):
         """Initialize buffers for rewards and lengths for each environment"""
         self.current_rewards = [0.0 for _ in range(self.training_env.num_envs)]
         self.current_lengths = [0 for _ in range(self.training_env.num_envs)]
-        
+
     def _on_step(self) -> bool:
         # Update current rewards and lengths
         for i in range(self.training_env.num_envs):
             self.current_rewards[i] += self.locals["rewards"][i]
             self.current_lengths[i] += 1
-            
+
             # Check if episode ended for this environment
             if self.locals["dones"][i]:
                 # Store the episode data
@@ -126,15 +118,15 @@ class RewardCallback(BaseCallback):
                 self.mean_rewards.append(np.mean(self.episode_rewards))
                 self.episode_times.append(self.current_lengths[i])
                 self.mean_times.append(np.mean(self.episode_times))
-                
+
                 # Print info
                 print(f"Episode reward: {self.current_rewards[i]:.2f}")
                 print(f"Episode length: {self.current_lengths[i]}")
-                
+
                 # Reset buffers for this environment
                 self.current_rewards[i] = 0.0
                 self.current_lengths[i] = 0
-                
+
         return True
 
     def plot_rewards(self):
@@ -163,12 +155,23 @@ class RewardCallback(BaseCallback):
         else:
             print("No time data to plot")
 
-# Criar ambiente vetorizado
+def make_env():
+    env = gym.make(
+        "ALE/Freeway-v5",
+        render_mode="rgb_array",
+        obs_type="rgb",
+        frameskip=1,
+        full_action_space=False
+    )
+    env = FreewayRewardWrapper(env)
+    return env
+
 NUM_ENVS = 4
 env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
+env = VecFrameStack(env, n_stack=3, channels_order='last')  # Stacking adicional
 reward_callback = RewardCallback()
 
-model = DQN(MlpPolicy,
+model = DQN(CnnPolicy,
             env,
             learning_rate=1e-3,
             buffer_size=50000,
@@ -182,39 +185,34 @@ model = DQN(MlpPolicy,
             verbose=1,
             device=device)
 
-model.learn(total_timesteps=500000, callback=reward_callback, progress_bar=True,)
-model.save("freeway_mlp.zip")
+model.learn(total_timesteps=10, callback=reward_callback)
+model.save("cnn-recompensa-personalizada/freeway_dqn_cnn_personalizada_model.zip")
 
-# Add error handling for plotting
-try:
-    print(f"Total episodes recorded: {len(reward_callback.episode_rewards)}")
-    reward_callback.plot_rewards()
-    reward_callback.plot_times()
-except Exception as e:
-    print(f"Error plotting results: {e}")
-    print(f"Rewards recorded: {len(reward_callback.episode_rewards)}")
-    print(f"Times recorded: {len(reward_callback.episode_times)}")
+reward_callback.plot_rewards()
+reward_callback.plot_times()
 
 # Atualizar seção de teste
 def test_model(model_path, num_episodes=5):
     env = DummyVecEnv([make_env for _ in range(1)])  # Single env for testing
+    env = VecFrameStack(env, n_stack=3, channels_order='last')  # Stacking adicional
     model = DQN.load(model_path, env=env)
-    
+
     for episode in range(num_episodes):
-        obs = env.reset()
+        obs, _ = env.reset()
         done = False
         total_reward = 0
-        
+
         while not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
             total_reward += reward[0]  # Get reward from first env
             env.render()
-            
+
         print(f"Episode {episode + 1}: Total Reward = {total_reward}")
-    
+
     env.close()
+
 
 if __name__ == "__main__":
     # Testar o wrapper
-    test_model("freeway_mlp.zip")
+    test_model("cnn-recompensa-personalizada/freeway_dqn_cnn_personalizada_model.zip")

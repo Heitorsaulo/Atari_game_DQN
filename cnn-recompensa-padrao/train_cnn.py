@@ -7,11 +7,10 @@ import ale_py
 
 env = gym.make("ALE/Freeway-v5", render_mode="human")
 
-modelo_path = "freeway_dqn_model.zip"
+modelo_path = "cnn-recompensa-padrao/freeway_dqn_cnn_model.zip"
 
 if os.path.exists(modelo_path):
-    print("Carregando modelo existente...")
-    modelo = DQN.load("freeway_dqn_model", env=env)
+    modelo = DQN.load("cnn-recompensa-padrao/freeway_dqn_cnn_model.zip", env=env)
 else:
     print("Criando novo modelo e arquivo...")
     modelo = DQN(
@@ -26,7 +25,7 @@ else:
         train_freq=4,
         verbose=1
     )
-    modelo.save("freeway_dqn_model")
+    modelo.save("cnn-recompensa-padrao/freeway_dqn_cnn_model.zip")
 
 inicio = time.time()
 modelo.learn(total_timesteps=600000, log_interval=10)
