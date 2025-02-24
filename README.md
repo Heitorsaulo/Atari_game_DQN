@@ -103,8 +103,6 @@ O treinamento do agente no jogo Freeway utilizando a política MLP com recompens
 
     ```sh
     pip install gymnasium ale-py matplotlib numpy stable-baselines3 torch stable-baselines3[extra]
-    pip install opencv-python
-    pip install pygame
     ```
 
 2. Execute o treinamento do modelo:
